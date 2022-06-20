@@ -1,0 +1,93 @@
+﻿@{
+    ViewData["Title"] = "Home Page";
+}
+
+<div class="container">
+    <div class="row" id="captchaRows"></div>
+</div>
+
+@section Scripts  {
+    <script>
+        // create connection to hub with signalR client library
+        var connection = new signalR
+            .HubConnectionBuilder()
+            .withUrl("/captcha")
+            .build();
+
+        // connect to hub
+        connection.start();
+
+        // listen to hub and call getCaptcha method
+        connection.on('GetCaptcha', getCaptcha);
+
+        function getCaptcha(captcha) {
+
+            var divId = makeid();
+
+            // add captchas to index page
+            $("#captchaRows").append(
+                '<div id="' + divId + '" class= "card col-md-3" style = "margin: 10px">' +
+                '<img class="card-img-top" src="' + captcha.imageHeaders + captcha.imageBinary + '" alt="Captcha">' +
+                    '<div class="card-body">' +
+                    '<input class="captchaConnectionId" type="hidden" value="' + captcha.connectionId + '">' +
+                    '<input class="captchaExpiration" type="hidden" value="' + captcha.expiration + '">' +
+                    '<div class="row">' +
+                        '<div class="col-md-8" style="padding:0">' +
+                            '<input id="captchaValue" type="text" class="form-control" placeholder="Enter Captcha">' +
+                        '</div>' +
+                        '<div class="col-md-4">' +
+                            '<button class="btn btn-primary" id="sendCaptchaBtn">Send</button>' +
+                        '</div>' +
+                    '</div>' +
+                    '</div>' +
+                '</div>');
+
+            // each second, it check if capcha expired or not.
+            // if expired, then disable it and call 'SendCaptchaExpired' on hub
+            setInterval(function () {
+                if (new Date() > new Date(captcha.expiration)) {
+                    $('#' + divId).find('#captchaValue').prop("disabled", true);
+                    $('#' + divId).find('#captchaValue').val("Expired");
+                    $('#' + divId).find('#sendCaptchaBtn').hide();
+                    connection.invoke('SendCaptchaExpired', captcha.connectionId);
+                }
+            }, 1000);
+        };
+
+        function makeid() {
+            var result = '';
+            var characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+            var charactersLength = characters.length;
+            for (var i = 0; i < 20; i++) {
+                result += characters.charAt(Math.floor(Math.random() *
+                    charactersLength));
+            }
+            return result;
+        }
+
+
+        // called when send button clicked
+        $(document).on("click", "#sendCaptchaBtn", function (e) {
+
+            // get required values
+            var value = $(e.target).closest('.row').find("#captchaValue").val();
+            var connectionId = $(e.target).closest('.row').closest('.card-body').find(".captchaConnectionId").val();
+            var expiration = $(e.target).closest('.row').closest('.card-body').find(".captchaExpiration").val();
+
+            // call 'ValidateCaptcha' on Hub
+            connection.invoke('ValidateCaptcha', value, connectionId, expiration);
+
+            $(this).closest('.card').fadeOut();
+        });
+
+        function clearExpired() {
+            var expireds = $(".card").filter(function () {
+                return $(this).find("#captchaValue").prop("disabled");
+            });
+
+            $.each(expireds, function (index, value) {
+                $(this).fadeOut();
+            });
+        }
+    </script>
+}
